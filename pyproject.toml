@@ -9,11 +9,13 @@ packages = [{include = "deta_py"}]
 
 [tool.poetry.dependencies]
 python = "^3.9"
+requests = "^2.31.0"
 
 
 [tool.poetry.group.dev.dependencies]
 mypy = "^1.4.1"
 wemake-python-styleguide = "^0.18.0"
+types-requests = "^2.31.0.2"
 
 [build-system]
 requires = ["poetry-core"]
