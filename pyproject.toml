@@ -1,0 +1,20 @@
+[tool.poetry]
+name = "deta-py"
+version = "0.1.0"
+description = "Deta Space SDK for Python."
+authors = ["butvinm <butvin.mihail@yandex.ru>"]
+license = "MIT"
+readme = "README.md"
+packages = [{include = "deta_py"}]
+
+[tool.poetry.dependencies]
+python = "^3.9"
+
+
+[tool.poetry.group.dev.dependencies]
+mypy = "^1.4.1"
+wemake-python-styleguide = "^0.18.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
