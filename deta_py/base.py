@@ -6,6 +6,7 @@ See https://deta.space/docs/en/build/reference/deta-base for reference.
 """
 
 
+from http import HTTPStatus
 from typing import Any, Mapping, Optional
 
 from requests import Response, request
@@ -44,6 +45,8 @@ class DetaBase(object):
     def put(self, *items: Mapping[str, Any]) -> list[dict[str, Any]]:
         """Put items to the base.
 
+        If item with the same key already exists, it will be overwritten.
+
         Items are put in batches of 25 items.
 
         Args:
@@ -62,7 +65,7 @@ class DetaBase(object):
                 '/items',
                 json={'items': items_slice},
             )
-            if response.ok:
+            if response.status_code == HTTPStatus.MULTI_STATUS:
                 processed += response.json()['processed']['items']
 
         return processed
