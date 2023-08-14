@@ -1,4 +1,4 @@
-name: linting
+name: tests
 
 on:
     push:
@@ -18,7 +18,7 @@ jobs:
         runs-on: ubuntu-latest
         strategy:
             matrix:
-                python-version: ["3.9"]
+                python-version: ["3.9", "3.10", "3.11"]
 
         steps:
             - uses: actions/checkout@v3
@@ -40,8 +40,8 @@ jobs:
                   poetry run pip install -U pip
                   poetry install
 
-            - name: Check flake8
-              run: poetry run flake8 deta_py
-
-            - name: Check mypy
-              run: poetry run mypy deta_py
+            - name: Run pytest
+              env:
+                  TEST_DATA_KEY: ${{ secrets.TEST_DATA_KEY }}
+                  TEST_BASE_NAME: ${{ github.run_id }}-${{ matrix.python-version }}
+              run: poetry run pytest -vv
