@@ -10,7 +10,7 @@ import pytest
 from deta.base import _Base  # type: ignore # noqa: WPS450
 
 from deta_py.base import DetaBase, ItemUpdate
-from tests.base.utils import clear_base, get_items, put_items
+from tests.base.utils import clear_base, get_item, get_items, put_items
 
 test_keyed_items = [
     {'key': '1', 'name': 'John', 'age': 20, 'friends': ['Jane']},
@@ -173,7 +173,7 @@ def test_update(base_with_data: DetaBase, deta_base: _Base) -> None:
     operations.append(friends=['Jane Doe'])
 
     base_with_data.update('1', operations)
-    item = base_with_data.get('1')
+    item = get_item(deta_base, '1')
     assert item == {
         'key': initial_item['key'],
         'name': 'John Doe',
@@ -186,7 +186,7 @@ def test_update(base_with_data: DetaBase, deta_base: _Base) -> None:
     operations.delete('friends')
 
     base_with_data.update('1', operations)
-    item = base_with_data.get('1')
+    item = get_item(deta_base, '1')
     assert item is not None
     assert 'friends' not in item
 
