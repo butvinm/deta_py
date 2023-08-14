@@ -18,6 +18,8 @@ BASE_API_URL = 'https://database.deta.sh/v1/{project_id}/{base_name}'
 # max number of items to put in one request
 ITEMS_BATCH_SIZE = 25
 
+REQUEST_TIMEOUT = 10  # seconds
+
 # See https://deta.space/docs/en/build/reference/deta-base/queries
 # for full reference
 SimpleQuery = dict[str, Any]
@@ -319,4 +321,5 @@ class DetaBase(object):  # noqa: WPS214
                 'Content-Type': 'application/json',
             },
             json=json,
+            timeout=REQUEST_TIMEOUT,
         )
