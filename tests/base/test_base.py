@@ -4,12 +4,13 @@ This is beta implementation, so the tests are not complete.
 """
 
 
-from typing import Generator
+from datetime import datetime, timedelta
+from typing import Any, Generator
 
 import pytest
 from deta.base import _Base  # type: ignore # noqa: WPS450
 
-from deta_py.base import DetaBase, ItemUpdate
+from deta_py.base import TTL_ATTRIBUTE, DetaBase, ItemUpdate, insert_ttl
 from tests.base.utils import clear_base, get_item, get_items, put_items
 
 test_keyed_items = [
@@ -63,6 +64,72 @@ def base_with_data(base: DetaBase, deta_base: _Base) -> DetaBase:
     """
     put_items(deta_base, test_keyed_items)
     return base
+
+
+def test_insert_ttl(base: DetaBase) -> None:
+    """Test the _insert_ttl method.
+
+    Args:
+        base (DetaBase): Empty DetaBase instance.
+    """
+    item: dict[str, Any] = {}
+
+    # Test with expires_at as datetime
+    expires_at_datetime = datetime.now()
+    result_datetime = insert_ttl(
+        item,
+        expires_at=expires_at_datetime,
+    )
+    assert TTL_ATTRIBUTE in result_datetime
+    assert result_datetime[TTL_ATTRIBUTE] == expires_at_datetime.replace(
+        microsecond=0,
+    ).timestamp()
+
+    # Test with expires_at as numeric
+    expires_at_numeric = datetime.now().timestamp()
+    result_numeric = insert_ttl(
+        item,
+        expires_at=expires_at_numeric,
+    )
+    assert TTL_ATTRIBUTE in result_numeric
+    assert result_numeric[TTL_ATTRIBUTE] == expires_at_numeric
+
+    # Test with expires_in as seconds
+    expires_in_seconds = timedelta(hours=1).total_seconds()
+    result_seconds = insert_ttl(
+        item,
+        expires_in=expires_in_seconds,
+    )
+    assert TTL_ATTRIBUTE in result_seconds
+    expected_expires_at = datetime.now() + timedelta(hours=1)
+    expected_expires_at_seconds = expected_expires_at.replace(
+        microsecond=0,
+    ).timestamp()
+    assert result_seconds[TTL_ATTRIBUTE] == expected_expires_at_seconds
+
+    # Test with expires_in as timedelta
+    expires_in_timedelta = timedelta(hours=2)
+    result_timedelta = insert_ttl(
+        item, expires_in=expires_in_timedelta.total_seconds())
+    assert TTL_ATTRIBUTE in result_timedelta
+    expected_expires_at = datetime.now() + expires_in_timedelta
+    expected_expires_at_timedelta = expected_expires_at.replace(
+        microsecond=0,
+    ).timestamp()
+    assert result_timedelta[TTL_ATTRIBUTE] == expected_expires_at_timedelta
+
+    # Test with both expires_at and expires_in
+    expires_at = datetime.now()
+    expires_in = timedelta(hours=1).total_seconds()
+    result_both = insert_ttl(
+        item,
+        expires_at=expires_at,
+        expires_in=expires_in,
+    )
+    assert TTL_ATTRIBUTE in result_both
+    assert result_both[TTL_ATTRIBUTE] == expires_at.replace(
+        microsecond=0,
+    ).timestamp()
 
 
 def test_base_init(
@@ -119,6 +186,12 @@ def test_put(base: DetaBase) -> None:
     processed = base.put(*test_items)
     assert len(processed) == len(test_items)
 
+    # Put with TTL
+    item = {'value': 'test'}
+    expires_at = datetime.now() + timedelta(hours=1)
+    result = base.put(item, expire_at=expires_at)
+    assert TTL_ATTRIBUTE in result[0]
+
     # Put bad item
     assert not base.put(0)  # type: ignore
 
@@ -152,6 +225,13 @@ def test_insert(base: DetaBase) -> None:
 
     # Insert existing item
     assert base.insert(test_keyed_items[0]) is None
+
+    # Insert with TTL
+    item = {'value': 'test'}
+    expires_at = datetime.now() + timedelta(hours=1)
+    result = base.insert(item, expire_at=expires_at)
+    assert result is not None
+    assert TTL_ATTRIBUTE in result
 
     # Insert bad item
     assert base.insert(0) is None  # type: ignore
@@ -189,6 +269,15 @@ def test_update(base_with_data: DetaBase, deta_base: _Base) -> None:
     item = get_item(deta_base, '1')
     assert item is not None
     assert 'friends' not in item
+
+    # Test update with TTL
+    operations = ItemUpdate()
+    operations.set(name='John Doe')
+    expires_at = datetime.now() + timedelta(hours=1)
+    base_with_data.update('1', operations, expire_at=expires_at)
+    item = get_item(deta_base, '1')
+    assert item is not None
+    assert TTL_ATTRIBUTE in item
 
     # Test bad key
     operations = ItemUpdate()

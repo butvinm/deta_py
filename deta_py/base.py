@@ -6,6 +6,7 @@ See https://deta.space/docs/en/build/reference/deta-base for reference.
 """
 
 
+from datetime import datetime, timedelta
 from http import HTTPStatus
 from typing import Any, Optional, Union
 
@@ -18,10 +19,21 @@ BASE_API_URL = 'https://database.deta.sh/v1/{project_id}/{base_name}'
 # max number of items to put in one request
 ITEMS_BATCH_SIZE = 25
 
+# Timeout for requests to Deta Base API
+REQUEST_TIMEOUT = 10  # seconds
+
+# Deta Base item TTL attribute name
+# Taken from official Deta Base Python SDK
+TTL_ATTRIBUTE = '__expires'
+
 # See https://deta.space/docs/en/build/reference/deta-base/queries
 # for full reference
 SimpleQuery = dict[str, Any]
 Query = Union[SimpleQuery, list[SimpleQuery]]
+
+# Item expire attribute
+ExpireAt = Union[datetime, int, float]
+ExpireIn = Union[timedelta, int, float]
 
 
 class ItemUpdate(object):
@@ -140,22 +152,35 @@ class DetaBase(object):  # noqa: WPS214
             base_name=base_name,
         )
 
-    def put(self, *items: dict[str, Any]) -> list[dict[str, Any]]:
+    def put(
+        self,
+        *items: dict[str, Any],
+        expire_at: Optional[ExpireAt] = None,
+        expire_in: Optional[ExpireIn] = None,
+    ) -> list[dict[str, Any]]:
         """Put items to the base.
 
         If item with the same key already exists, it will be overwritten.
 
         Items are put in batches of 25 items.
 
+        You can specify either expire_at or expire_in to set item TTL.
+        If both are specified, expire_at will be used.
+
         Args:
             items (dict[str, Any]): Items to put.
+            expire_at (Optional[ExpireAt]): Item expire time.
+            expire_in (Optional[ExpireIn]): Item expire time delta.
 
         Returns:
             list[dict[str, Any]]: List of successfully processed items.
         """
         processed = []
         while items:
-            items_slice = items[:ITEMS_BATCH_SIZE]
+            items_slice = [
+                insert_ttl(item, expire_at, expire_in)
+                for item in items[:ITEMS_BATCH_SIZE]
+            ]
             items = items[ITEMS_BATCH_SIZE:]
 
             response = self._request(
@@ -192,18 +217,29 @@ class DetaBase(object):  # noqa: WPS214
         """
         self._request('DELETE', '/items/{key}'.format(key=key))
 
-    def insert(self, item: dict[str, Any]) -> Optional[dict[str, Any]]:
+    def insert(
+        self,
+        item: dict[str, Any],
+        expire_at: Optional[ExpireAt] = None,
+        expire_in: Optional[ExpireIn] = None,
+    ) -> Optional[dict[str, Any]]:
         """Insert item to the base.
 
         If item with the same key already exists, it will not be inserted.
 
+        You can specify either expire_at or expire_in to set item TTL.
+        If both are specified, expire_at will be used.
+
         Args:
             item (dict[str, Any]): Item to insert.
+            expire_at (Optional[ExpireAt]): Item expire time.
+            expire_in (Optional[ExpireIn]): Item expire time delta.
 
         Returns:
             Optional[dict[str, Any]]: Inserted item \
                 or None if item with the same key already exists.
         """
+        item = insert_ttl(item, expire_at, expire_in)
         response = self._request(
             'POST',
             '/items',
@@ -219,8 +255,13 @@ class DetaBase(object):  # noqa: WPS214
         self,
         key: str,
         operations: ItemUpdate,
+        expire_at: Optional[ExpireAt] = None,
+        expire_in: Optional[ExpireIn] = None,
     ) -> bool:
         """Update item in the base.
+
+        You can specify either expire_at or expire_in to set item TTL.
+        If both are specified, expire_at will be used.
 
         Example:
             >>> operations = ItemUpdate()
@@ -233,10 +274,13 @@ class DetaBase(object):  # noqa: WPS214
         Args:
             key (str): Item key.
             operations (ItemUpdate): Update operations.
+            expire_at (Optional[ExpireAt]): Item expire time.
+            expire_in (Optional[ExpireIn]): Item expire time delta.
 
         Returns:
             bool: True if item was updated, False if not found.
         """
+        operations.set(**insert_ttl({}, expire_at, expire_in))
         response = self._request(
             'PATCH',
             '/items/{key}'.format(key=key),
@@ -319,4 +363,44 @@ class DetaBase(object):  # noqa: WPS214
                 'Content-Type': 'application/json',
             },
             json=json,
+            timeout=REQUEST_TIMEOUT,
         )
+
+
+def insert_ttl(
+    item: dict[str, Any],
+    expires_at: Optional[ExpireAt] = None,
+    expires_in: Optional[ExpireIn] = None,
+) -> dict[str, Any]:
+    """Insert TTL attribute to item data.
+
+    If both `expires_at` and `expires_in` are specified,
+    `expires_at` will be used.
+
+    Args:
+        item (dict[str, Any]): Item data.
+        expires_at (Optional[ExpireAt]): Expiration date. \
+            In seconds if numeric.
+        expires_in (Optional[ExpireIn]): Expiration delta. \
+            In seconds if numeric.
+
+    Returns:
+        dict[str, Any]: Item data with TTL attribute.
+    """
+    if expires_at is not None:
+        if isinstance(expires_at, datetime):
+            # microseconds replacement taken from official SDK
+            # can be removed in future
+            expires_at = expires_at.replace(microsecond=0).timestamp()
+
+        item[TTL_ATTRIBUTE] = expires_at
+    elif expires_in is not None:
+        if isinstance(expires_in, (int, float)):
+            expires_in = timedelta(seconds=expires_in)
+
+        expires_at = datetime.now() + expires_in
+        expires_at = expires_at.replace(microsecond=0).timestamp()
+
+        item[TTL_ATTRIBUTE] = expires_at
+
+    return item
