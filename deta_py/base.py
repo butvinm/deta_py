@@ -18,6 +18,11 @@ BASE_API_URL = 'https://database.deta.sh/v1/{project_id}/{base_name}'
 # max number of items to put in one request
 ITEMS_BATCH_SIZE = 25
 
+# See https://deta.space/docs/en/build/reference/deta-base/queries
+# for full reference
+SimpleQuery = dict[str, Any]
+Query = Union[SimpleQuery, list[SimpleQuery]]
+
 
 class ItemUpdate(object):
     """Utility for building update requests."""
@@ -241,7 +246,7 @@ class DetaBase(object):  # noqa: WPS214
 
     def query(
         self,
-        query: list[dict[str, Any]],
+        query: Optional[Query] = None,
         limit: int = 1000,
         last: Optional[str] = None,
     ) -> QueryResult:
@@ -259,13 +264,16 @@ class DetaBase(object):  # noqa: WPS214
         ...     items += res.items
 
         Args:
-            query (list[dict[str, Any]]): List of queries.
+            query (Optional[Query]): List of queries.
             limit (int): Limit of items to return.
             last (Optional[str]): Last key of the previous query.
 
         Returns:
             QueryResult: Query result.
         """
+        if isinstance(query, dict):
+            query = [query]
+
         response = self._request(
             'POST',
             '/query',
@@ -275,12 +283,15 @@ class DetaBase(object):  # noqa: WPS214
                 'last': last,
             },
         )
-        data: dict[str, Any] = response.json()
-        return QueryResult(
-            items=data['items'],
-            count=data['paging']['size'],
-            last=data['paging'].get('last'),
-        )
+        if response.status_code == HTTPStatus.OK:
+            data: dict[str, Any] = response.json()
+            return QueryResult(
+                items=data['items'],
+                count=data['paging']['size'],
+                last=data['paging'].get('last'),
+            )
+
+        return QueryResult(items=[], count=0, last=None)
 
     def _request(
         self,
