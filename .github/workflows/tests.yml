@@ -42,5 +42,5 @@ jobs:
             - name: Run pytest
               env:
                   TEST_DATA_KEY: ${{ secrets.TEST_DATA_KEY }}
-                  TEST_BASE_NAME: ${{ secrets.TEST_BASE_NAME }}-${{ matrix.python-version }}
+                  TEST_BASE_NAME: ${{ github.run_id }}-${{ matrix.python-version }}
               run: poetry run pytest -vv
