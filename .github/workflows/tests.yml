@@ -43,4 +43,4 @@ jobs:
               env:
                   TEST_DATA_KEY: ${{ secrets.TEST_DATA_KEY }}
                   TEST_BASE_NAME: ${{ secrets.TEST_BASE_NAME }}
-              run: poetry run pytest
+              run: poetry run pytest -vv
