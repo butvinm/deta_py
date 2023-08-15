@@ -6,127 +6,20 @@ See https://deta.space/docs/en/build/reference/deta-base for reference.
 """
 
 
-from datetime import datetime, timedelta
 from http import HTTPStatus
-from typing import Any, Optional, Union
+from typing import Any, Optional
 
 from requests import Response, request
 
+from deta_py.deta_base.queries import ItemUpdate, QueryResult
+from deta_py.deta_base.types import ExpireAt, ExpireIn, Query
+from deta_py.deta_base.utils import (
+    BASE_API_URL,
+    ITEMS_BATCH_SIZE,
+    REQUEST_TIMEOUT,
+    insert_ttl,
+)
 from deta_py.utils import parse_data_key
-
-BASE_API_URL = 'https://database.deta.sh/v1/{project_id}/{base_name}'
-
-# max number of items to put in one request
-ITEMS_BATCH_SIZE = 25
-
-# Timeout for requests to Deta Base API
-REQUEST_TIMEOUT = 10  # seconds
-
-# Deta Base item TTL attribute name
-# Taken from official Deta Base Python SDK
-TTL_ATTRIBUTE = '__expires'
-
-# See https://deta.space/docs/en/build/reference/deta-base/queries
-# for full reference
-SimpleQuery = dict[str, Any]
-Query = Union[SimpleQuery, list[SimpleQuery]]
-
-# Item expire attribute
-ExpireAt = Union[datetime, int, float]
-ExpireIn = Union[timedelta, int, float]
-
-
-class ItemUpdate(object):
-    """Utility for building update requests."""
-
-    def __init__(self) -> None:
-        """Init operations."""
-        self._set: dict[str, Any] = {}
-        self._increment: dict[str, Union[int, float]] = {}
-        self._append: dict[str, list[Any]] = {}
-        self._delete: list[str] = []
-
-    def set(self, **kwargs: Any) -> 'ItemUpdate':
-        """Set fields.
-
-        Args:
-            kwargs (Any): Fields to set.
-
-        Returns:
-            UpdateRequest: Self.
-        """
-        self._set.update(kwargs)
-        return self
-
-    def increment(self, **kwargs: int) -> 'ItemUpdate':
-        """Increment fields.
-
-        Args:
-            kwargs (int): Fields to increment.
-
-        Returns:
-            UpdateRequest: Self.
-        """
-        self._increment.update(kwargs)
-        return self
-
-    def append(self, **kwargs: list[Any]) -> 'ItemUpdate':
-        """Append fields.
-
-        Args:
-            kwargs (list[Any]): Fields to append.
-
-        Returns:
-            UpdateRequest: Self.
-        """
-        self._append.update(kwargs)
-        return self
-
-    def delete(self, *args: str) -> 'ItemUpdate':
-        """Delete fields.
-
-        Args:
-            args (str): Fields to delete.
-
-        Returns:
-            UpdateRequest: Self.
-        """
-        self._delete.extend(args)
-        return self
-
-    def as_json(self) -> dict[str, Any]:
-        """Build request body.
-
-        Returns:
-            dict[str, Any]: Request body.
-        """
-        return {
-            'set': self._set,
-            'increment': self._increment,
-            'append': self._append,
-            'delete': self._delete,
-        }
-
-
-class QueryResult(object):
-    """Paginated query response."""
-
-    def __init__(
-        self,
-        items: list[dict[str, Any]],
-        count: int,
-        last: Optional[str],
-    ) -> None:
-        """Init query response.
-
-        Args:
-            items (list[dict[str, Any]]): Items.
-            count (int): Total number of items.
-            last (Optional[str]): Last item key.
-        """
-        self.items = items
-        self.count = count
-        self.last = last
 
 
 class DetaBase(object):  # noqa: WPS214
@@ -365,42 +258,3 @@ class DetaBase(object):  # noqa: WPS214
             json=json,
             timeout=REQUEST_TIMEOUT,
         )
-
-
-def insert_ttl(
-    item: dict[str, Any],
-    expires_at: Optional[ExpireAt] = None,
-    expires_in: Optional[ExpireIn] = None,
-) -> dict[str, Any]:
-    """Insert TTL attribute to item data.
-
-    If both `expires_at` and `expires_in` are specified,
-    `expires_at` will be used.
-
-    Args:
-        item (dict[str, Any]): Item data.
-        expires_at (Optional[ExpireAt]): Expiration date. \
-            In seconds if numeric.
-        expires_in (Optional[ExpireIn]): Expiration delta. \
-            In seconds if numeric.
-
-    Returns:
-        dict[str, Any]: Item data with TTL attribute.
-    """
-    if expires_at is not None:
-        if isinstance(expires_at, datetime):
-            # microseconds replacement taken from official SDK
-            # can be removed in future
-            expires_at = expires_at.replace(microsecond=0).timestamp()
-
-        item[TTL_ATTRIBUTE] = expires_at
-    elif expires_in is not None:
-        if isinstance(expires_in, (int, float)):
-            expires_in = timedelta(seconds=expires_in)
-
-        expires_at = datetime.now() + expires_in
-        expires_at = expires_at.replace(microsecond=0).timestamp()
-
-        item[TTL_ATTRIBUTE] = expires_at
-
-    return item

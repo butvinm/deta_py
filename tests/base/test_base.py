@@ -10,7 +10,9 @@ from typing import Any, Generator
 import pytest
 from deta.base import _Base  # type: ignore # noqa: WPS450
 
-from deta_py.base import TTL_ATTRIBUTE, DetaBase, ItemUpdate, insert_ttl
+from deta_py.deta_base.base import DetaBase
+from deta_py.deta_base.queries import ItemUpdate
+from deta_py.deta_base.utils import TTL_ATTRIBUTE, insert_ttl
 from tests.base.utils import clear_base, get_item, get_items, put_items
 
 test_keyed_items = [
