@@ -9,7 +9,7 @@ See https://deta.space/docs/en/build/reference/deta-base for reference.
 from http import HTTPStatus
 from typing import Any, Optional
 
-from requests import Response, request
+from requests import Response, Session, request
 
 from deta_py.deta_base.queries import ItemUpdate, QueryResult
 from deta_py.deta_base.types import ExpireAt, ExpireIn, Query
@@ -23,14 +23,16 @@ from deta_py.utils import parse_data_key
 
 
 class DetaBase(object):  # noqa: WPS214
-    """Deta Base class.
+    """Deta Base client.
 
     Wraps Deta Base HTTP API.
     See https://deta.space/docs/en/build/reference/http-api/base for reference.
     """
 
     def __init__(self, data_key: str, base_name: str):
-        """Deta Base class.
+        """Init Deta Base client.
+
+        You can generate Data Key in your project or collection settings.
 
         Args:
             data_key (str): Data key.
@@ -40,10 +42,16 @@ class DetaBase(object):  # noqa: WPS214
         self.base_name = base_name
 
         project_id, _ = parse_data_key(data_key)
-        self.host = BASE_API_URL.format(
+        self.base_url = BASE_API_URL.format(
             project_id=project_id,
             base_name=base_name,
         )
+
+        self._session = Session()
+        self._session.headers.update({
+            'X-API-Key': data_key,
+            'Content-Type': 'application/json',
+        })
 
     def put(
         self,
@@ -187,7 +195,7 @@ class DetaBase(object):  # noqa: WPS214
         limit: int = 1000,
         last: Optional[str] = None,
     ) -> QueryResult:
-        """Query items in the base.
+        """Fetch items in the base.
 
         If result contains more than 1000 items, it will be paginated.
 
@@ -248,13 +256,9 @@ class DetaBase(object):  # noqa: WPS214
         Returns:
             Response: Response object.
         """
-        return request(
+        return self._session.request(
             method,
-            self.host + path,
-            headers={
-                'X-API-Key': self.data_key,
-                'Content-Type': 'application/json',
-            },
+            self.base_url + path,
             json=json,
             timeout=REQUEST_TIMEOUT,
         )
