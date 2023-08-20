@@ -5,11 +5,12 @@ description = "Deta Space SDK for Python."
 authors = ["butvinm <butvin.mihail@yandex.ru>"]
 license = "MIT"
 readme = "README.md"
-packages = [{include = "deta_py"}]
+packages = [{ include = "deta_py" }]
 
 [tool.poetry.dependencies]
 python = "^3.9"
 requests = "^2.31.0"
+aiohttp = "^3.8.5"
 
 
 [tool.poetry.group.dev.dependencies]
@@ -18,8 +19,12 @@ wemake-python-styleguide = "^0.18.0"
 types-requests = "^2.31.0.2"
 pytest = "^7.4.0"
 python-dotenv = "^1.0.0"
-deta = {extras = ["async"], version = "^1.2.0"}
+deta = { extras = ["async"], version = "^1.2.0" }
+pytest-asyncio = "^0.21.1"
 
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"

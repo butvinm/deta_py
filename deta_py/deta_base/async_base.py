@@ -1,15 +1,12 @@
-"""Deta Base module.
+"""Async Deta Base module.
 
-That module contains DetaBase class that is used to interact with Deta Base.
-
-See https://deta.space/docs/en/build/reference/deta-base for reference.
+Async implementation of DetaBase.
 """
-
 
 from http import HTTPStatus
 from typing import Any, Optional
 
-from requests import Response, Session
+from aiohttp import ClientSession, ClientTimeout
 
 from deta_py.deta_base.queries import ItemUpdate, QueryResult
 from deta_py.deta_base.types import ExpireAt, ExpireIn, Query
@@ -22,21 +19,20 @@ from deta_py.deta_base.utils import (
 from deta_py.utils import parse_data_key
 
 
-class DetaBase(object):  # noqa: WPS214
-    """Deta Base client.
-
-    Wraps Deta Base HTTP API.
-    See https://deta.space/docs/en/build/reference/http-api/base for reference.
-    """
+class AsyncDetaBase(object):  # noqa: WPS214
+    """Async Deta Base client."""
 
     def __init__(self, data_key: str, base_name: str):
-        """Init Deta Base client.
+        """Init async Deta Base client.
 
         You can generate Data Key in your project or collection settings.
 
+        New aiohttp session is initialized.
+        Don't forget to call `base.close()` to close connection.
+
         Args:
-            data_key (str): Data key.
-            base_name (str): Base name.
+            data_key (str): Deta project data key.
+            base_name (str): Deta Base name.
         """
         self.data_key = data_key
         self.base_name = base_name
@@ -47,13 +43,15 @@ class DetaBase(object):  # noqa: WPS214
             base_name=base_name,
         )
 
-        self._session = Session()
-        self._session.headers.update({
-            'X-API-Key': data_key,
-            'Content-Type': 'application/json',
-        })
+        self._session = ClientSession(
+            headers={
+                'X-API-Key': self.data_key,
+                'Content-Type': 'application/json',
+            },
+            timeout=ClientTimeout(total=REQUEST_TIMEOUT),
+        )
 
-    def put(
+    async def put(
         self,
         *items: dict[str, Any],
         expire_at: Optional[ExpireAt] = None,
@@ -63,7 +61,7 @@ class DetaBase(object):  # noqa: WPS214
 
         If item with the same key already exists, it will be overwritten.
 
-        Items are put in batches of 25 items.
+        Items are splitted into batches of 25 items and put in parallel.
 
         You can specify either expire_at or expire_in to set item TTL.
         If both are specified, expire_at will be used.
@@ -78,23 +76,18 @@ class DetaBase(object):  # noqa: WPS214
         """
         processed = []
         while items:
-            items_slice = [
-                insert_ttl(item, expire_at, expire_in)
-                for item in items[:ITEMS_BATCH_SIZE]
-            ]
+            batch_items = list(items[:ITEMS_BATCH_SIZE])
             items = items[ITEMS_BATCH_SIZE:]
-
-            response = self._request(
-                'PUT',
-                '/items',
-                json={'items': items_slice},
+            batch_processed = await self._put_batch(
+                batch_items,
+                expire_at=expire_at,
+                expire_in=expire_in,
             )
-            if response.status_code == HTTPStatus.MULTI_STATUS:
-                processed += response.json()['processed']['items']
+            processed.extend(batch_processed)
 
         return processed
 
-    def get(self, key: str) -> Optional[dict[str, Any]]:
+    async def get(self, key: str) -> Optional[dict[str, Any]]:
         """Get item from the base.
 
         Args:
@@ -103,22 +96,28 @@ class DetaBase(object):  # noqa: WPS214
         Returns:
             Optional[dict[str, Any]]: Item or None if not found.
         """
-        response = self._request('GET', '/items/{key}'.format(key=key))
-        if response.status_code == HTTPStatus.OK:
-            item: dict[str, Any] = response.json()
-            return item
+        async with self._session.get(
+            self._get_url('/items/{key}', key=key),
+        ) as response:
+            if response.status == HTTPStatus.OK:
+                item: dict[str, Any] = await response.json()
+                return item
+            return None
 
-        return None
-
-    def delete(self, key: str) -> None:
+    async def delete(self, key: str) -> None:
         """Delete item from the base.
 
         Args:
             key (str): Item key.
         """
-        self._request('DELETE', '/items/{key}'.format(key=key))
+        # probably some response processing will be added in future,
+        # so empty manager body currently ignored
+        async with self._session.delete(  # noqa: WPS328
+            self._get_url('/items/{key}', key=key),
+        ):
+            pass  # noqa: WPS420
 
-    def insert(
+    async def insert(
         self,
         item: dict[str, Any],
         expire_at: Optional[ExpireAt] = None,
@@ -141,18 +140,16 @@ class DetaBase(object):  # noqa: WPS214
                 or None if item with the same key already exists.
         """
         item = insert_ttl(item, expire_at, expire_in)
-        response = self._request(
-            'POST',
-            '/items',
+        async with self._session.post(
+            self._get_url('/items'),
             json={'item': item},
-        )
-        if response.status_code == HTTPStatus.CREATED:
-            inserted_item: dict[str, Any] = response.json()
-            return inserted_item
+        ) as response:
+            if response.status == HTTPStatus.CREATED:
+                inserted_item: dict[str, Any] = await response.json()
+                return inserted_item
+            return None
 
-        return None
-
-    def update(
+    async def update(
         self,
         key: str,
         operations: ItemUpdate,
@@ -170,7 +167,7 @@ class DetaBase(object):  # noqa: WPS214
             >>> operations.increment(age=1)
             >>> operations.append(friends=['Jane'])
             >>> operations.delete('hobbies')
-            >>> base.update(operations)
+            >>> await base.update(operations)
 
         Args:
             key (str): Item key.
@@ -182,14 +179,13 @@ class DetaBase(object):  # noqa: WPS214
             bool: True if item was updated, False if not found.
         """
         operations.set(**insert_ttl({}, expire_at, expire_in))
-        response = self._request(
-            'PATCH',
-            '/items/{key}'.format(key=key),
+        async with self._session.patch(
+            self._get_url('/items/{key}', key=key),
             json=operations.as_json(),
-        )
-        return response.status_code == HTTPStatus.OK
+        ) as response:
+            return response.status == HTTPStatus.OK
 
-    def query(
+    async def query(
         self,
         query: Optional[Query] = None,
         limit: int = 1000,
@@ -219,46 +215,67 @@ class DetaBase(object):  # noqa: WPS214
         if isinstance(query, dict):
             query = [query]
 
-        response = self._request(
-            'POST',
-            '/query',
+        async with self._session.post(
+            self._get_url('/query'),
             json={
                 'query': query,
                 'limit': limit,
                 'last': last,
             },
-        )
-        if response.status_code == HTTPStatus.OK:
-            data: dict[str, Any] = response.json()
-            return QueryResult(
-                items=data['items'],
-                count=data['paging']['size'],
-                last=data['paging'].get('last'),
-            )
+        ) as response:
+            if response.status == HTTPStatus.OK:
+                data: dict[str, Any] = await response.json()
+                return QueryResult(
+                    items=data['items'],
+                    count=data['paging']['size'],
+                    last=data['paging'].get('last'),
+                )
 
-        return QueryResult(items=[], count=0, last=None)
+            return QueryResult(items=[], count=0, last=None)
 
-    def _request(
+    async def close(self) -> None:
+        """Close aiohttp session."""
+        await self._session.close()
+
+    async def _put_batch(
         self,
-        method: str,
-        path: str,
-        json: Optional[Any] = None,
-    ) -> Response:
-        """Send request to the base.
-
-        Send request to the base with credentials.
+        batch_items: list[dict[str, Any]],
+        expire_at: Optional[ExpireAt] = None,
+        expire_in: Optional[ExpireIn] = None,
+    ) -> list[dict[str, Any]]:
+        """Put batch of items to the base.
 
         Args:
-            method (str): HTTP method.
-            path (str): Path to the resource.
-            json (Optional[Any]): JSON data to send.
+            batch_items (list[dict[str, Any]]): Items to put.
+            expire_at (Optional[ExpireAt]): Item expire time.
+            expire_in (Optional[ExpireIn]): Item expire time delta.
 
         Returns:
-            Response: Response object.
+            list[dict[str, Any]]: List of successfully processed items.
         """
-        return self._session.request(
-            method,
-            self.base_url + path,
-            json=json,
-            timeout=REQUEST_TIMEOUT,
-        )
+        batch_items = [
+            insert_ttl(item, expire_at, expire_in)
+            for item in batch_items
+        ]
+        async with self._session.put(
+            self._get_url('/items'),
+            json={'items': batch_items},
+        ) as response:
+            if response.status == HTTPStatus.MULTI_STATUS:
+                data = await response.json()
+                items: list[dict[str, Any]] = data['processed']['items']
+                return items
+
+            return []
+
+    def _get_url(self, path: str, **kwargs: str) -> str:
+        """Return full url for the given path.
+
+        Args:
+            path (str): Relative path.
+            kwargs (str): Path params.
+
+        Returns:
+            str: Full url.
+        """
+        return self.base_url + path.format(**kwargs)

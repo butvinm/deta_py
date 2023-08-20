@@ -1,7 +1,4 @@
-"""Integration tests for the DetaBase class.
-
-This is beta implementation, so the tests are not complete.
-"""
+"""Integration tests for the DetaBase class."""
 
 
 from datetime import datetime, timedelta
@@ -69,7 +66,7 @@ def base_with_data(base: DetaBase, deta_base: _Base) -> DetaBase:
 
 
 def test_insert_ttl(base: DetaBase) -> None:
-    """Test the _insert_ttl method.
+    """Test the insert_ttl method.
 
     Args:
         base (DetaBase): Empty DetaBase instance.
