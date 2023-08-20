@@ -38,7 +38,7 @@ class AsyncDetaBase(object):  # noqa: WPS214
         self.base_name = base_name
 
         project_id, _ = parse_data_key(data_key)
-        self.host = BASE_API_URL.format(
+        self.base_url = BASE_API_URL.format(
             project_id=project_id,
             base_name=base_name,
         )
@@ -97,7 +97,7 @@ class AsyncDetaBase(object):  # noqa: WPS214
             Optional[dict[str, Any]]: Item or None if not found.
         """
         async with self._session.get(
-            self.host + '/items/{key}'.format(key=key),
+            self._get_url('/items/{key}', key=key),
         ) as response:
             if response.status == HTTPStatus.OK:
                 item: dict[str, Any] = await response.json()
@@ -113,7 +113,7 @@ class AsyncDetaBase(object):  # noqa: WPS214
         # probably some response processing will be added in future,
         # so empty manager body currently ignored
         async with self._session.delete(  # noqa: WPS328
-            self.host + '/items/{key}'.format(key=key),
+            self._get_url('/items/{key}', key=key),
         ):
             pass  # noqa: WPS420
 
@@ -141,7 +141,7 @@ class AsyncDetaBase(object):  # noqa: WPS214
         """
         item = insert_ttl(item, expire_at, expire_in)
         async with self._session.post(
-            self.host + '/items',
+            self._get_url('/items'),
             json={'item': item},
         ) as response:
             if response.status == HTTPStatus.CREATED:
@@ -179,9 +179,10 @@ class AsyncDetaBase(object):  # noqa: WPS214
             bool: True if item was updated, False if not found.
         """
         operations.set(**insert_ttl({}, expire_at, expire_in))
-        url = '/items/{key}'.format(key=key)
-        json = operations.as_json()
-        async with self._session.patch(self.host + url, json=json) as response:
+        async with self._session.patch(
+            self._get_url('/items/{key}', key=key),
+            json=operations.as_json(),
+        ) as response:
             return response.status == HTTPStatus.OK
 
     async def query(
@@ -215,7 +216,7 @@ class AsyncDetaBase(object):  # noqa: WPS214
             query = [query]
 
         async with self._session.post(
-            self.host + '/query',
+            self._get_url('/query'),
             json={
                 'query': query,
                 'limit': limit,
@@ -257,7 +258,7 @@ class AsyncDetaBase(object):  # noqa: WPS214
             for item in batch_items
         ]
         async with self._session.put(
-            self.host + '/items',
+            self._get_url('/items'),
             json={'items': batch_items},
         ) as response:
             if response.status == HTTPStatus.MULTI_STATUS:
@@ -266,3 +267,15 @@ class AsyncDetaBase(object):  # noqa: WPS214
                 return items
 
             return []
+
+    def _get_url(self, path: str, **kwargs: str) -> str:
+        """Return full url for the given path.
+
+        Args:
+            path (str): Relative path.
+            kwargs (str): Path params.
+
+        Returns:
+            str: Full url.
+        """
+        return self.base_url + path.format(**kwargs)

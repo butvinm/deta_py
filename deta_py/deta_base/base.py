@@ -9,7 +9,7 @@ See https://deta.space/docs/en/build/reference/deta-base for reference.
 from http import HTTPStatus
 from typing import Any, Optional
 
-from requests import Response, Session, request
+from requests import Response, Session
 
 from deta_py.deta_base.queries import ItemUpdate, QueryResult
 from deta_py.deta_base.types import ExpireAt, ExpireIn, Query
