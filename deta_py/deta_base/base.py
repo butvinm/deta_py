@@ -9,7 +9,7 @@ See https://deta.space/docs/en/build/reference/deta-base for reference.
 from http import HTTPStatus
 from typing import Any, Optional
 
-from requests import Response, Session
+from requests import Session
 
 from deta_py.deta_base.queries import ItemUpdate, QueryResult
 from deta_py.deta_base.types import ExpireAt, ExpireIn, Query
@@ -84,10 +84,10 @@ class DetaBase(object):  # noqa: WPS214
             ]
             items = items[ITEMS_BATCH_SIZE:]
 
-            response = self._request(
-                'PUT',
-                '/items',
+            response = self._session.put(
+                self._get_url('/items'),
                 json={'items': items_slice},
+                timeout=REQUEST_TIMEOUT,
             )
             if response.status_code == HTTPStatus.MULTI_STATUS:
                 processed += response.json()['processed']['items']
@@ -103,7 +103,10 @@ class DetaBase(object):  # noqa: WPS214
         Returns:
             Optional[dict[str, Any]]: Item or None if not found.
         """
-        response = self._request('GET', '/items/{key}'.format(key=key))
+        response = self._session.get(
+            self._get_url('/items/{key}', key=key),
+            timeout=REQUEST_TIMEOUT,
+        )
         if response.status_code == HTTPStatus.OK:
             item: dict[str, Any] = response.json()
             return item
@@ -116,7 +119,10 @@ class DetaBase(object):  # noqa: WPS214
         Args:
             key (str): Item key.
         """
-        self._request('DELETE', '/items/{key}'.format(key=key))
+        self._session.delete(
+            self._get_url('/items/{key}', key=key),
+            timeout=REQUEST_TIMEOUT,
+        )
 
     def insert(
         self,
@@ -141,10 +147,10 @@ class DetaBase(object):  # noqa: WPS214
                 or None if item with the same key already exists.
         """
         item = insert_ttl(item, expire_at, expire_in)
-        response = self._request(
-            'POST',
-            '/items',
+        response = self._session.post(
+            self._get_url('/items'),
             json={'item': item},
+            timeout=REQUEST_TIMEOUT,
         )
         if response.status_code == HTTPStatus.CREATED:
             inserted_item: dict[str, Any] = response.json()
@@ -182,10 +188,10 @@ class DetaBase(object):  # noqa: WPS214
             bool: True if item was updated, False if not found.
         """
         operations.set(**insert_ttl({}, expire_at, expire_in))
-        response = self._request(
-            'PATCH',
-            '/items/{key}'.format(key=key),
+        response = self._session.patch(
+            self._get_url('/items/{key}', key=key),
             json=operations.as_json(),
+            timeout=REQUEST_TIMEOUT,
         )
         return response.status_code == HTTPStatus.OK
 
@@ -219,14 +225,14 @@ class DetaBase(object):  # noqa: WPS214
         if isinstance(query, dict):
             query = [query]
 
-        response = self._request(
-            'POST',
-            '/query',
+        response = self._session.post(
+            self._get_url('/query'),
             json={
                 'query': query,
                 'limit': limit,
                 'last': last,
             },
+            timeout=REQUEST_TIMEOUT,
         )
         if response.status_code == HTTPStatus.OK:
             data: dict[str, Any] = response.json()
@@ -238,27 +244,14 @@ class DetaBase(object):  # noqa: WPS214
 
         return QueryResult(items=[], count=0, last=None)
 
-    def _request(
-        self,
-        method: str,
-        path: str,
-        json: Optional[Any] = None,
-    ) -> Response:
-        """Send request to the base.
-
-        Send request to the base with credentials.
+    def _get_url(self, path: str, **kwargs: str) -> str:
+        """Return full url for the given path.
 
         Args:
-            method (str): HTTP method.
-            path (str): Path to the resource.
-            json (Optional[Any]): JSON data to send.
+            path (str): Relative path.
+            kwargs (str): Path params.
 
         Returns:
-            Response: Response object.
+            str: Full url.
         """
-        return self._session.request(
-            method,
-            self.base_url + path,
-            json=json,
-            timeout=REQUEST_TIMEOUT,
-        )
+        return self.base_url + path.format(**kwargs)
