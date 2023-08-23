@@ -7,6 +7,7 @@ See https://deta.space/docs/en/build/reference/deta-base for reference.
 
 
 from http import HTTPStatus
+from types import TracebackType
 from typing import Any, Optional
 
 from requests import Session
@@ -238,6 +239,29 @@ class DetaBase(object):  # noqa: WPS214
             )
 
         return QueryResult(items=[], count=0, last=None)
+
+    def __enter__(self) -> 'DetaBase':
+        """Enter context manager.
+
+        Returns:
+            DetaBase: Deta Base client.
+        """
+        return self
+
+    def __exit__(
+        self,
+        exc_type: Optional[type[BaseException]],
+        exc_value: Optional[BaseException],
+        exc_traceback: Optional[TracebackType],
+    ) -> None:
+        """Exit context manager.
+
+        Args:
+            exc_type (Optional[type[BaseException]]): Exception type.
+            exc_value (Optional[BaseException]): Exception value.
+            exc_traceback (Optional[TracebackType]): Exception traceback.
+        """
+        self.close()
 
     def close(self) -> None:
         """Close session."""

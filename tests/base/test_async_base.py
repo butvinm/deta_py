@@ -42,9 +42,8 @@ async def base(
     """
     clear_base(deta_base)
 
-    base = AsyncDetaBase(credentials[0], credentials[1])
-    yield base
-    await base.close()
+    async with AsyncDetaBase(credentials[0], credentials[1]) as base:
+        yield base
 
     clear_base(deta_base)
 
