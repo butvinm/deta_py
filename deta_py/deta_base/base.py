@@ -78,19 +78,14 @@ class DetaBase(object):  # noqa: WPS214
         """
         processed = []
         while items:
-            items_slice = [
-                insert_ttl(item, expire_at, expire_in)
-                for item in items[:ITEMS_BATCH_SIZE]
-            ]
+            batch_items = list(items[:ITEMS_BATCH_SIZE])
             items = items[ITEMS_BATCH_SIZE:]
-
-            response = self._session.put(
-                self._get_url('/items'),
-                json={'items': items_slice},
-                timeout=REQUEST_TIMEOUT,
+            batch_processed = self._put_batch(
+                batch_items,
+                expire_at=expire_at,
+                expire_in=expire_in,
             )
-            if response.status_code == HTTPStatus.MULTI_STATUS:
-                processed += response.json()['processed']['items']
+            processed.extend(batch_processed)
 
         return processed
 
@@ -243,6 +238,38 @@ class DetaBase(object):  # noqa: WPS214
             )
 
         return QueryResult(items=[], count=0, last=None)
+
+    def _put_batch(
+        self,
+        batch_items: list[dict[str, Any]],
+        expire_at: Optional[ExpireAt] = None,
+        expire_in: Optional[ExpireIn] = None,
+    ) -> list[dict[str, Any]]:
+        """Put batch of items to the base.
+
+        Args:
+            batch_items (list[dict[str, Any]]): Items to put.
+            expire_at (Optional[ExpireAt]): Item expire time.
+            expire_in (Optional[ExpireIn]): Item expire time delta.
+
+        Returns:
+            list[dict[str, Any]]: List of successfully processed items.
+        """
+        batch_items = [
+            insert_ttl(item, expire_at, expire_in)
+            for item in batch_items
+        ]
+        response = self._session.put(
+            self._get_url('/items'),
+            json={'items': batch_items},
+            timeout=REQUEST_TIMEOUT,
+        )
+        if response.status_code == HTTPStatus.MULTI_STATUS:
+            data = response.json()
+            items: list[dict[str, Any]] = data['processed']['items']
+            return items
+
+        return []
 
     def _get_url(self, path: str, **kwargs: str) -> str:
         """Return full url for the given path.
