@@ -239,6 +239,10 @@ class DetaBase(object):  # noqa: WPS214
 
         return QueryResult(items=[], count=0, last=None)
 
+    def close(self) -> None:
+        """Close session."""
+        self._session.close()
+
     def _put_batch(
         self,
         batch_items: list[dict[str, Any]],
