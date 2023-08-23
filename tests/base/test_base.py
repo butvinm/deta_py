@@ -43,7 +43,8 @@ def base(
     """
     clear_base(deta_base)
 
-    yield DetaBase(credentials[0], credentials[1])
+    with DetaBase(credentials[0], credentials[1]) as base:
+        yield base
 
     clear_base(deta_base)
 

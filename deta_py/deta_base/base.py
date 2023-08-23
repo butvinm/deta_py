@@ -7,9 +7,10 @@ See https://deta.space/docs/en/build/reference/deta-base for reference.
 
 
 from http import HTTPStatus
+from types import TracebackType
 from typing import Any, Optional
 
-from requests import Response, Session
+from requests import Session
 
 from deta_py.deta_base.queries import ItemUpdate, QueryResult
 from deta_py.deta_base.types import ExpireAt, ExpireIn, Query
@@ -78,19 +79,14 @@ class DetaBase(object):  # noqa: WPS214
         """
         processed = []
         while items:
-            items_slice = [
-                insert_ttl(item, expire_at, expire_in)
-                for item in items[:ITEMS_BATCH_SIZE]
-            ]
+            batch_items = list(items[:ITEMS_BATCH_SIZE])
             items = items[ITEMS_BATCH_SIZE:]
-
-            response = self._request(
-                'PUT',
-                '/items',
-                json={'items': items_slice},
+            batch_processed = self._put_batch(
+                batch_items,
+                expire_at=expire_at,
+                expire_in=expire_in,
             )
-            if response.status_code == HTTPStatus.MULTI_STATUS:
-                processed += response.json()['processed']['items']
+            processed.extend(batch_processed)
 
         return processed
 
@@ -103,7 +99,10 @@ class DetaBase(object):  # noqa: WPS214
         Returns:
             Optional[dict[str, Any]]: Item or None if not found.
         """
-        response = self._request('GET', '/items/{key}'.format(key=key))
+        response = self._session.get(
+            self._get_url('/items/{key}', key=key),
+            timeout=REQUEST_TIMEOUT,
+        )
         if response.status_code == HTTPStatus.OK:
             item: dict[str, Any] = response.json()
             return item
@@ -116,7 +115,10 @@ class DetaBase(object):  # noqa: WPS214
         Args:
             key (str): Item key.
         """
-        self._request('DELETE', '/items/{key}'.format(key=key))
+        self._session.delete(
+            self._get_url('/items/{key}', key=key),
+            timeout=REQUEST_TIMEOUT,
+        )
 
     def insert(
         self,
@@ -141,10 +143,10 @@ class DetaBase(object):  # noqa: WPS214
                 or None if item with the same key already exists.
         """
         item = insert_ttl(item, expire_at, expire_in)
-        response = self._request(
-            'POST',
-            '/items',
+        response = self._session.post(
+            self._get_url('/items'),
             json={'item': item},
+            timeout=REQUEST_TIMEOUT,
         )
         if response.status_code == HTTPStatus.CREATED:
             inserted_item: dict[str, Any] = response.json()
@@ -182,10 +184,10 @@ class DetaBase(object):  # noqa: WPS214
             bool: True if item was updated, False if not found.
         """
         operations.set(**insert_ttl({}, expire_at, expire_in))
-        response = self._request(
-            'PATCH',
-            '/items/{key}'.format(key=key),
+        response = self._session.patch(
+            self._get_url('/items/{key}', key=key),
             json=operations.as_json(),
+            timeout=REQUEST_TIMEOUT,
         )
         return response.status_code == HTTPStatus.OK
 
@@ -219,14 +221,14 @@ class DetaBase(object):  # noqa: WPS214
         if isinstance(query, dict):
             query = [query]
 
-        response = self._request(
-            'POST',
-            '/query',
+        response = self._session.post(
+            self._get_url('/query'),
             json={
                 'query': query,
                 'limit': limit,
                 'last': last,
             },
+            timeout=REQUEST_TIMEOUT,
         )
         if response.status_code == HTTPStatus.OK:
             data: dict[str, Any] = response.json()
@@ -238,27 +240,73 @@ class DetaBase(object):  # noqa: WPS214
 
         return QueryResult(items=[], count=0, last=None)
 
-    def _request(
-        self,
-        method: str,
-        path: str,
-        json: Optional[Any] = None,
-    ) -> Response:
-        """Send request to the base.
-
-        Send request to the base with credentials.
-
-        Args:
-            method (str): HTTP method.
-            path (str): Path to the resource.
-            json (Optional[Any]): JSON data to send.
+    def __enter__(self) -> 'DetaBase':
+        """Enter context manager.
 
         Returns:
-            Response: Response object.
+            DetaBase: Deta Base client.
         """
-        return self._session.request(
-            method,
-            self.base_url + path,
-            json=json,
+        return self
+
+    def __exit__(
+        self,
+        exc_type: Optional[type[BaseException]],
+        exc_value: Optional[BaseException],
+        exc_traceback: Optional[TracebackType],
+    ) -> None:
+        """Exit context manager.
+
+        Args:
+            exc_type (Optional[type[BaseException]]): Exception type.
+            exc_value (Optional[BaseException]): Exception value.
+            exc_traceback (Optional[TracebackType]): Exception traceback.
+        """
+        self.close()
+
+    def close(self) -> None:
+        """Close session."""
+        self._session.close()
+
+    def _put_batch(
+        self,
+        batch_items: list[dict[str, Any]],
+        expire_at: Optional[ExpireAt] = None,
+        expire_in: Optional[ExpireIn] = None,
+    ) -> list[dict[str, Any]]:
+        """Put batch of items to the base.
+
+        Args:
+            batch_items (list[dict[str, Any]]): Items to put.
+            expire_at (Optional[ExpireAt]): Item expire time.
+            expire_in (Optional[ExpireIn]): Item expire time delta.
+
+        Returns:
+            list[dict[str, Any]]: List of successfully processed items.
+        """
+        batch_items = [
+            insert_ttl(item, expire_at, expire_in)
+            for item in batch_items
+        ]
+        response = self._session.put(
+            self._get_url('/items'),
+            json={'items': batch_items},
             timeout=REQUEST_TIMEOUT,
         )
+        if response.status_code == HTTPStatus.MULTI_STATUS:
+            data = response.json()
+            items: list[dict[str, Any]] = data['processed']['items']
+            return items
+
+        return []
+
+    def _get_url(self, path: str, **kwargs: str) -> str:
+        """Return full url for the given path.
+
+        Args:
+            path (str): Relative path.
+            kwargs (str): Path params.
+
+        Returns:
+            str: Full url.
+        """
+        return self.base_url + path.format(**kwargs)
