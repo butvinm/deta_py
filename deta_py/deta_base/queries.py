@@ -1,9 +1,9 @@
-"""Deta Base querying tools.
+"""Deta Base queries module.
 
-Provides tools for working with Deta Base queries.
+Contains types and utilities for querying Deta Base.
 """
 
-from typing import Any, Optional, Union
+from typing import Any, Union
 
 
 class ItemUpdate(object):
@@ -76,24 +76,3 @@ class ItemUpdate(object):
             'append': self._append,
             'delete': self._delete,
         }
-
-
-class QueryResult(object):
-    """Paginated query response."""
-
-    def __init__(
-        self,
-        items: list[dict[str, Any]],
-        count: int,
-        last: Optional[str],
-    ) -> None:
-        """Init query response.
-
-        Args:
-            items (list[dict[str, Any]]): Items.
-            count (int): Total number of items.
-            last (Optional[str]): Last item key.
-        """
-        self.items = items
-        self.count = count
-        self.last = last
