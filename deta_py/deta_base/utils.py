@@ -5,9 +5,7 @@ Contains constants and utility functions for working with Deta Base.
 
 
 from datetime import datetime, timedelta
-from typing import Any, Optional
-
-from deta_py.deta_base.types import ExpireAt, ExpireIn
+from typing import Any, Optional, Union
 
 BASE_API_URL = 'https://database.deta.sh/v1/{project_id}/{base_name}'
 
@@ -21,6 +19,11 @@ REQUEST_TIMEOUT = 10  # seconds
 # Deta Base item TTL attribute name
 # Taken from official Deta Base Python SDK
 TTL_ATTRIBUTE = '__expires'
+
+
+# Item expiration types
+ExpireAt = Union[datetime, int, float]
+ExpireIn = Union[timedelta, int, float]
 
 
 def insert_ttl(

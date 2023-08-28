@@ -11,13 +11,14 @@ from typing import Any, Optional
 
 from requests import Response, Session
 
-from deta_py.deta_base.queries import ItemUpdate
+from deta_py.deta_base.queries import ItemUpdate, Query
 from deta_py.deta_base.results import QueryResult
-from deta_py.deta_base.types import ExpireAt, ExpireIn, Query
 from deta_py.deta_base.utils import (
     BASE_API_URL,
     ITEMS_BATCH_SIZE,
     REQUEST_TIMEOUT,
+    ExpireAt,
+    ExpireIn,
     insert_ttl,
 )
 from deta_py.utils import parse_data_key

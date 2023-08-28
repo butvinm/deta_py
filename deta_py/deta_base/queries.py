@@ -5,6 +5,11 @@ Contains types and utilities for querying Deta Base.
 
 from typing import Any, Union
 
+# See https://deta.space/docs/en/build/reference/deta-base/queries
+# for full reference
+SimpleQuery = dict[str, Any]
+Query = Union[SimpleQuery, list[SimpleQuery]]
+
 
 class ItemUpdate(object):
     """Utility for building update requests."""
