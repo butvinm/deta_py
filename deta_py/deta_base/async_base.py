@@ -4,6 +4,7 @@ Async implementation of DetaBase.
 """
 
 from http import HTTPStatus
+from types import TracebackType
 from typing import Any, Optional
 
 from aiohttp import ClientSession, ClientTimeout
@@ -234,6 +235,29 @@ class AsyncDetaBase(object):  # noqa: WPS214
                 )
 
             return QueryResult(items=[], count=0, last=None)
+
+    async def __aenter__(self) -> 'AsyncDetaBase':
+        """Enter context manager.
+
+        Returns:
+            DetaBase: Deta Base client.
+        """
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type: Optional[type[BaseException]],
+        exc_value: Optional[BaseException],
+        exc_traceback: Optional[TracebackType],
+    ) -> None:
+        """Exit context manager.
+
+        Args:
+            exc_type (Optional[type[BaseException]]): Exception type.
+            exc_value (Optional[BaseException]): Exception value.
+            exc_traceback (Optional[TracebackType]): Exception traceback.
+        """
+        await self.close()
 
     async def close(self) -> None:
         """Close aiohttp session."""
